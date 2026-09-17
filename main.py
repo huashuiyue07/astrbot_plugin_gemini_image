@@ -133,8 +133,17 @@ class GeminiImagePlugin(Star):
 
     @filter.command(COMMAND_SHORT)
     async def cmd_generate_short(self, event: AstrMessageEvent):
-        """短指令「生图」，默认关闭以避免与其它插件抢指令"""
+        """短指令「生图」，默认关闭。
+
+        AstrBot 不支持按配置取消注册指令：handler 一旦注册就会被路由命中并
+        阻断事件传播。因此关闭时不能静默 return（会吞掉消息且挡住其它插件的
+        同名指令），必须回一句明确的提示。
+        """
         if not self._cfg_bool("enable_short_command", False):
+            yield event.plain_result(
+                f"🚫 短指令「{COMMAND_SHORT}」未开启，请改用 /{COMMAND_MAIN}；"
+                "管理员可在插件配置中开启 enable_short_command"
+            )
             return
         prompt = self._extract_prompt(event.message_str, (COMMAND_SHORT,))
         async for item in self._run_generate(event, prompt):

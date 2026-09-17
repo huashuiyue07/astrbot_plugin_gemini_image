@@ -168,23 +168,23 @@ except ImportError:  # pragma: no cover - 仅在无依赖环境下走到
     _curl_requests = _make_module("curl_cffi.requests")
     _curl_exc = _make_module("curl_cffi.requests.exceptions")
 
-    # 继承关系与真实 curl_cffi 保持一致，异常映射的先后顺序才有意义
+    # 继承关系与真实 curl_cffi 保持一致，异常映射的先后顺序才有意义。
+    # 注意：每个类只能建一次并直接挂到模块上——若在循环里重复创建同名类，
+    # ConnectTimeout 继承的是第一版基类，与模块属性上的第二版没有 isinstance
+    # 关系，describe_exception 的映射会全部落空。
     _CurlError = type("CurlError", (Exception,), {})
     _RequestException = type("RequestException", (_CurlError,), {})
     _ConnectionError = type("ConnectionError", (_RequestException,), {})
     _Timeout = type("Timeout", (_RequestException,), {})
-    for _name, _bases in (
-        ("CurlError", (_CurlError,)),
-        ("RequestException", (_RequestException,)),
-        ("ConnectionError", (_ConnectionError,)),
-        ("Timeout", (_Timeout,)),
-        ("ConnectTimeout", (_ConnectionError, _Timeout)),
-        ("ReadTimeout", (_Timeout,)),
-        ("HTTPError", (_RequestException,)),
-        ("ProxyError", (_RequestException,)),
-        ("InvalidProxyURL", (_RequestException,)),
-    ):
-        setattr(_curl_exc, _name, type(_name, _bases, {}))
+    _curl_exc.CurlError = _CurlError
+    _curl_exc.RequestException = _RequestException
+    _curl_exc.ConnectionError = _ConnectionError
+    _curl_exc.Timeout = _Timeout
+    _curl_exc.ConnectTimeout = type("ConnectTimeout", (_ConnectionError, _Timeout), {})
+    _curl_exc.ReadTimeout = type("ReadTimeout", (_Timeout,), {})
+    _curl_exc.HTTPError = type("HTTPError", (_RequestException,), {})
+    _curl_exc.ProxyError = type("ProxyError", (_RequestException,), {})
+    _curl_exc.InvalidProxyURL = type("InvalidProxyURL", (_RequestException,), {})
 
     _curl_requests.exceptions = _curl_exc
 
