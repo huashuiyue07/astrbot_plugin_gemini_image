@@ -318,9 +318,9 @@ class GeminiImagePlugin(Star):
         """没出图时给出可执行的原因说明。"""
         if result.download_failed > 0:
             return (
-                f"⚠️ 图片其实生成出来了，但有 {result.download_failed} 张下载失败。\n"
-                "💡 通常是网络/代理不稳定导致的，稍后重试一次；\n"
-                "若持续失败，检查代理是否可用（或把出口切到别的节点）。"
+                f"⚠️ 图片其实生成出来了，但有 {result.download_failed} 张下载失败（已自动重试过）。\n"
+                "💡 下载环节被临时拒绝（图片 CDN 限流、链接校验抖动）比较常见，稍后重发一次多半就好；\n"
+                "若持续失败，可把代理出口换一个节点再试。"
             )
 
         if result.web_image_count > 0:

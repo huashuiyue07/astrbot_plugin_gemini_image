@@ -10,16 +10,21 @@ from core.generator import ImageGenerator
 
 
 class FakeImage:
-    """假的 gemini_webapi Image：save() 会真的写一个小文件，并记录收到的参数。"""
+    """假的 gemini_webapi Image：save() 会真的写一个小文件，并记录调用情况。"""
 
-    def __init__(self, name: str, fail: bool = False):
+    def __init__(self, name: str, fail: bool = False, fail_times: int = 0):
         self.name = name
+        #: 永久失败
         self.fail = fail
+        #: 前 N 次失败、之后成功（模拟瞬时故障）
+        self.fail_times = fail_times
+        self.save_calls = 0
         self.save_kwargs: dict | None = None
 
     async def save(self, **kwargs) -> str:
+        self.save_calls += 1
         self.save_kwargs = kwargs
-        if self.fail:
+        if self.fail or self.save_calls <= self.fail_times:
             raise OSError("boom")
         target = Path(kwargs.get("path", "temp")) / f"{self.name}.png"
         target.write_bytes(b"fake-png")
@@ -231,5 +236,49 @@ def test_falls_back_when_download_session_unavailable(tmp_path):
         result = await make_generator(client, tmp_path).generate("猫")
 
         assert len(result.image_paths) == 1
+
+    asyncio.run(scenario())
+
+
+def test_download_is_retried_on_transient_failure(tmp_path):
+    """下载失败要重建连接重试一次 —— 403 这类瞬时问题重试即可成功。"""
+
+    async def scenario():
+        flaky = FakeImage("flaky", fail_times=1)
+        client = FakeClient(output=FakeOutput(FakeCandidate(generated=[flaky])), session=FakeSession())
+        result = await make_generator(client, tmp_path).generate("猫")
+
+        assert len(result.image_paths) == 1, "重试后应成功"
+        assert result.download_failed == 0
+        assert flaky.save_calls == 2
+
+    asyncio.run(scenario())
+
+
+def test_download_gives_up_after_retries(tmp_path):
+    """重试仍失败时，如实计入失败张数（不再谎报成功了）。"""
+
+    async def scenario():
+        always = FakeImage("always", fail=True)
+        client = FakeClient(output=FakeOutput(FakeCandidate(generated=[always])), session=FakeSession())
+        result = await make_generator(client, tmp_path).generate("猫")
+
+        assert result.image_paths == []
+        assert result.download_failed == 1
+        assert always.save_calls == 2, "应该试满两次才放弃"
+
+    asyncio.run(scenario())
+
+
+def test_retry_creates_fresh_session(tmp_path):
+    """每次尝试都应新建 session，不能复用已出问题的连接。"""
+
+    async def scenario():
+        client = FakeClient(
+            output=FakeOutput(FakeCandidate(generated=[FakeImage("a", fail_times=1)])),
+            session=FakeSession(),
+        )
+        await make_generator(client, tmp_path).generate("猫")
+        assert client.download_sessions == 2
 
     asyncio.run(scenario())

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import inspect
 import time
@@ -143,34 +144,54 @@ class ImageGenerator:
     async def _save_images(self, images: list) -> tuple[list[str], int]:
         """把图片落盘，返回 (成功保存的绝对路径列表, 失败张数)。"""
         self.output_dir.mkdir(parents=True, exist_ok=True)
-
-        # 自己建下载 session：gemini-webapi 自建的 session 写死了 CurlFollow.SAFE，
-        # 走内网代理时会被 SSRF 保护拒掉（详见 client.create_download_session 注释）。
-        session = None
-        try:
-            session = await self.client.create_download_session()
-        except Exception as exc:  # noqa: BLE001 - 建不出来就退回原生行为
-            logger.warning(f"[gemini-image] 创建下载 session 失败，改用默认方式：{exc}")
-
         saved: list[str] = []
         failed = 0
-        try:
-            for image in images:
-                try:
-                    path = await self._save_one(image, session)
-                except Exception as exc:  # noqa: BLE001 - 单张失败不该让整体失败
-                    failed += 1
-                    logger.warning(f"[gemini-image] 图片保存失败：{exc}")
-                    continue
-                if path:
-                    saved.append(path)
-                else:
-                    failed += 1
-        finally:
-            if session is not None:
-                with contextlib.suppress(Exception):
-                    await session.close()
+        for image in images:
+            path = await self._save_with_retry(image)
+            if path:
+                saved.append(path)
+            else:
+                failed += 1
         return saved, failed
+
+    async def _save_with_retry(self, image, attempts: int = 2) -> str | None:
+        """下载单张图片；失败时**重建连接重试一次**。
+
+        为什么要重试：下载环节的失败往往是**瞬时**的 —— 图片 CDN 对某个出口 IP 的
+        临时判定、URL 签名校验的偶发抖动、连接复用失效等，重建连接后通常就正常了
+        （实测遇到过 HTTP 403，重试即成功）。失败一次就放弃、让用户自己再发一遍，
+        体验很差。
+
+        每次尝试都用**新建的** session，避免复用已经出问题的连接。
+        """
+        last_error: Exception | None = None
+        for attempt in range(1, attempts + 1):
+            session = None
+            try:
+                # 自己建下载 session：gemini-webapi 自建的 session 写死了
+                # CurlFollow.SAFE，走内网代理时会被 SSRF 保护拒掉
+                # （详见 client.create_download_session 的注释）。
+                session = await self.client.create_download_session()
+            except Exception as exc:  # noqa: BLE001 - 建不出来就退回原生行为
+                logger.warning(f"[gemini-image] 创建下载 session 失败，改用默认方式：{exc}")
+
+            try:
+                return await self._save_one(image, session)
+            except Exception as exc:  # noqa: BLE001 - 单张失败不该让整体失败
+                last_error = exc
+                if attempt < attempts:
+                    logger.warning(
+                        f"[gemini-image] 图片下载失败（第 {attempt} 次），重建连接后重试：{str(exc)[:120]}"
+                    )
+                    await asyncio.sleep(1)
+            finally:
+                if session is not None:
+                    with contextlib.suppress(Exception):
+                        await session.close()
+
+        if last_error is not None:
+            logger.warning(f"[gemini-image] 图片下载最终失败：{str(last_error)[:160]}")
+        return None
 
     async def _save_one(self, image, session=None) -> str | None:
         kwargs: dict = {"path": str(self.output_dir), "verbose": False}
