@@ -1,5 +1,7 @@
 """指令文本解析与配置读取测试。"""
 
+import asyncio
+
 from conftest import import_plugin_main
 from core.constants import COMMAND_SHORT
 from core.generator import GenerationResult
@@ -54,6 +56,27 @@ def test_extract_prompt_empty_message():
 def test_extract_prompt_command_inside_text_is_not_stripped():
     text = "帮我 gemini生图 一只猫"
     assert Plugin._extract_prompt(text, COMMANDS) == text
+
+
+# --------------------------------------------------------------- 短指令开关
+
+
+def test_short_command_disabled_replies_hint():
+    """短指令关闭时必须回复提示，不能静默吞消息（AstrBot 会阻断事件传播）。"""
+    plugin = make_plugin({"enable_short_command": False})
+
+    class _Event:
+        message_str = "/生图 一只猫"
+
+        def plain_result(self, text):
+            return text
+
+    async def collect():
+        return [item async for item in plugin.cmd_generate_short(_Event())]
+
+    replies = asyncio.run(collect())
+    assert len(replies) == 1
+    assert "未开启" in replies[0]
 
 
 # ------------------------------------------------------------------- 配置读取

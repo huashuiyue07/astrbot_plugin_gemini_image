@@ -2,7 +2,7 @@
 
 本文件记录 astrbot_plugin_gemini_image 的所有重要变更。
 
-## [1.1.2] - 2026-09-17
+## [1.1.3] - 2026-09-17
 
 ### Fixed
 
@@ -27,6 +27,20 @@
   导致 `import gemini_webapi.utils.get_access_token as m` 拿到的是**函数**而不是模块
   （Python 3.7+ 的 `import a.b as c` 等价于 `getattr(a, "b")`），
   直接 `m.CurlFollow = ...` 会**静默失效**。必须用 `importlib.import_module`
+
+## [1.1.2] - 2026-09-17
+
+### Fixed
+
+- **短指令「生图」关闭时会静默吞掉消息**。AstrBot 的指令注册是静态的：handler 一旦注册
+  就会被路由命中，执行后事件停止传播——之前关闭时直接 return，用户发 `/生图` 没有任何
+  反馈，其它插件的同名指令也被一并挡住。现改为回复明确的未开启提示并引导改用
+  `/gemini生图`，配置项 hint 同步说明该行为
+- **测试桩导致无依赖环境下 2 项测试失败**：conftest 的 curl_cffi 桩在循环里重复创建
+  同名异常类，`ConnectTimeout` 继承的是第一版基类，与挂到模块上的第二版
+  `ConnectionError` / `Timeout` 没有 isinstance 关系，异常映射测试落空；loguru 回归
+  测试在未安装 loguru 的环境直接 ModuleNotFoundError。现修复桩的类创建方式，
+  loguru 测试改为无依赖时跳过
 
 ## [1.1.1] - 2026-09-16
 

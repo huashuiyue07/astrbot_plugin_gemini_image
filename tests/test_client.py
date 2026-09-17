@@ -257,7 +257,7 @@ def test_library_logging_keeps_global_handlers():
     loguru 的 `remove(None)` 会移除**全部** handler ——
     结果是插件加载后 AstrBot 自己再无任何日志输出。
     """
-    from loguru import logger as loguru_logger
+    loguru_logger = pytest.importorskip("loguru", reason="无依赖环境下跳过（AstrBot 必装 loguru）").logger
 
     before = len(loguru_logger._core.handlers)
     GeminiImageClient._configure_library_logging(verbose=False)
