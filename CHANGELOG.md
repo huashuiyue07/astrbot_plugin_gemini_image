@@ -2,6 +2,32 @@
 
 本文件记录 astrbot_plugin_gemini_image 的所有重要变更。
 
+## [1.1.2] - 2026-09-17
+
+### Fixed
+
+- **`CurlFollow.SAFE` 引起的连接失败与「误报」**。gemini-webapi 在
+  `utils/get_access_token.py`、`types/image.py`、`types/video.py` 三处把
+  `allow_redirects` 写死为 `CurlFollow.SAFE`，而该模式会拒绝「重定向到内网 IP」。
+  经内网代理出网时（容器里的 `http://172.17.0.1:7890` 就是典型），**代理地址本身**
+  会被判成 SSRF 目标并直接拒掉：
+
+      curl: (7) Redirect to internal IP 172.17.0.1 rejected (SSRF protection)
+
+  更糟的是它**掩盖了真正的失败原因** —— 凭据失效等引起的重定向也会报这一句，
+  极易误判成「代理坏了」。现于**模块级**把 `CurlFollow.SAFE` 修正为普通跟随重定向
+  （`core/client.py::patch_curl_follow_safe()`），对上游代码零侵入
+- **网络类错误不再直接失败**：连接被拒 / 超时等瞬时故障，现在会丢弃连接并重试一次
+  （此前只对凭据失效重试，一次几秒的节点抖动就会让用户直接看到失败）
+
+### Notes
+
+- 补丁有个隐蔽的坑值得记下：`gemini_webapi/utils/__init__.py` 里
+  `from .get_access_token import InitSession, get_access_token` 遮蔽了同名子模块，
+  导致 `import gemini_webapi.utils.get_access_token as m` 拿到的是**函数**而不是模块
+  （Python 3.7+ 的 `import a.b as c` 等价于 `getattr(a, "b")`），
+  直接 `m.CurlFollow = ...` 会**静默失效**。必须用 `importlib.import_module`
+
 ## [1.1.1] - 2026-09-16
 
 ### Fixed

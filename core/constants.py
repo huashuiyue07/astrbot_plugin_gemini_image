@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 PLUGIN_NAME = "astrbot_plugin_gemini_image"
-PLUGIN_VERSION = "1.1.1"
+PLUGIN_VERSION = "1.1.2"
 PLUGIN_AUTHOR = "huashuiyue07"
 PLUGIN_DESC = "网页版 Gemini 生图 - 走 gemini.google.com 网页接口，无需 Google API Key"
 PLUGIN_REPO = "https://github.com/huashuiyue07/astrbot_plugin_gemini_image"

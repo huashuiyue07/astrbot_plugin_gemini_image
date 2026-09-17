@@ -5,6 +5,7 @@ import time
 
 import gemini_webapi as gwa
 import pytest
+from curl_cffi.requests import exceptions as curl_exc
 from gemini_webapi.constants import AccountStatus
 
 from core.client import GeminiImageClient
@@ -264,3 +265,56 @@ def test_library_logging_keeps_global_handlers():
 
     # 复原，避免影响其它用例的输出
     GeminiImageClient._configure_library_logging(verbose=True)
+
+
+def test_patch_curl_follow_safe():
+    """gemini-webapi 写死的 `CurlFollow.SAFE` 必须被改成「普通跟随重定向」。
+
+    否则经内网代理出网时，代理地址本身会被判成 SSRF 目标直接拒掉
+    （`curl: (7) Redirect to internal IP ... rejected (SSRF protection)`），
+    而且这句报错还会掩盖真正的失败原因。
+    """
+    import importlib
+
+    from curl_cffi import CurlFollow as Real
+
+    import core.client as client_mod
+
+    patched = client_mod.patch_curl_follow_safe()
+    assert patched, "至少应打上一个模块的补丁"
+    # 关键：这个模块被 utils/__init__.py 用同名函数遮蔽过，必须用 importlib 才能拿到
+    assert "gemini_webapi.utils.get_access_token" in patched
+
+    for module_name in patched:
+        module = importlib.import_module(module_name)
+        assert module.CurlFollow.SAFE is True
+        # 其余成员应透传真实枚举
+        assert module.CurlFollow.ALL == Real.ALL
+        assert module.CurlFollow.OBEYCODE == Real.OBEYCODE
+
+
+def test_network_error_is_retried_once(tmp_path):
+    """瞬时网络故障应重试一次，而不是直接把失败抛给用户。"""
+
+    async def scenario():
+        client = GeminiImageClient("PSID", "", min_interval=0)
+
+        class Flaky(FakeWebClient):
+            def __init__(self):
+                super().__init__(status=AccountStatus.AVAILABLE, output="OK")
+                self.calls = 0
+
+            async def generate_content(self, *args, **kwargs):
+                self.calls += 1
+                if self.calls == 1:
+                    raise curl_exc.ConnectionError("node hiccup")
+                return self.output
+
+        fake = Flaky()
+        patch_ensure(client, fake)
+
+        result = await client.generate("猫")
+        assert result == "OK"
+        assert fake.calls == 2, "第一次失败后应重建连接重试"
+
+    asyncio.run(scenario())

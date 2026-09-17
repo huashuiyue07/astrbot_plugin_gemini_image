@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import importlib
 import os
 import time
 from pathlib import Path
@@ -21,11 +22,75 @@ import gemini_webapi as gwa
 from astrbot.api import logger
 from curl_cffi import CurlHttpVersion
 from curl_cffi.requests import AsyncSession
+from curl_cffi.requests import exceptions as curl_exc
 from gemini_webapi import GeminiClient
 
 from .constants import DEFAULT_IMPERSONATE
 from .cookies import load_cached_1psidts
 from .errors import COOKIE_HINT, GeminiImageError, account_error_from, describe_exception
+
+
+def patch_curl_follow_safe() -> list[str]:
+    """把 gemini-webapi 里写死的 `CurlFollow.SAFE` 换成「普通跟随重定向」。
+
+    ⚠️ 为什么必须打这个补丁
+
+    gemini-webapi 在三处把 `allow_redirects` 写死为 `CurlFollow.SAFE`：
+
+    - `utils/get_access_token.py:282`
+    - `types/image.py:103`
+    - `types/video.py:93`
+
+    该模式的语义是「跟随重定向，但拒绝跳到内网/私有 IP」。当我们只能经**内网代理**
+    出网时（容器里的 `172.17.0.1:7890` 就是典型），它会把**代理地址本身**判成 SSRF 目标
+    直接拒掉：
+
+        curl: (7) Redirect to internal IP 172.17.0.1 rejected (SSRF protection)
+
+    更恶劣的是它会**掩盖真正的失败原因** —— 比如凭据失效导致 Google 返回重定向时，
+    报出来的却是这句误导性的 SSRF 错误，让人误以为是网络/代理坏了。
+
+    做法是在**模块级**把 `CurlFollow` 这个名字替换掉，让 `SAFE` 等价于 `True`，
+    对上游代码零侵入。
+
+    ⚠️ 有个隐蔽的坑：`gemini_webapi/utils/__init__.py` 里有
+    `from .get_access_token import InitSession, get_access_token`，
+    使得 `import gemini_webapi.utils.get_access_token as m` 拿到的是**函数**而非模块
+    （Python 3.7+ 的 `import a.b as c` 会优先取 `getattr(a, "b")`），
+    此时 `m.CurlFollow = ...` 会**静默失效**。必须用 `importlib.import_module`。
+
+    Returns
+    -------
+    `list[str]`
+        实际打了补丁的模块名，便于日志确认是否生效。
+    """
+    try:
+        from curl_cffi import CurlFollow as _RealCurlFollow
+    except ImportError:  # pragma: no cover - curl_cffi 是 gemini-webapi 的硬依赖
+        return []
+
+    class _PatchedCurlFollow:
+        """只改写 SAFE 的语义，其余成员透传真实枚举。"""
+
+        def __getattr__(self, name: str):
+            if name == "SAFE":
+                return True
+            return getattr(_RealCurlFollow, name)
+
+    patched: list[str] = []
+    for module_name in (
+        "gemini_webapi.utils.get_access_token",
+        "gemini_webapi.types.image",
+        "gemini_webapi.types.video",
+    ):
+        try:
+            module = importlib.import_module(module_name)
+        except ImportError:  # pragma: no cover - 版本差异时静默跳过
+            continue
+        if hasattr(module, "CurlFollow"):
+            module.CurlFollow = _PatchedCurlFollow()
+            patched.append(module_name)
+    return patched
 
 
 class GeminiImageClient:
@@ -73,6 +138,12 @@ class GeminiImageClient:
 
         # 把 gemini-webapi 自己的日志与 AstrBot 的日志隔离开（见方法内注释）
         self._configure_library_logging(self._verbose)
+
+        # 修正 gemini-webapi 写死的 CurlFollow.SAFE（详见函数注释）：
+        # 经内网代理出网时它会把代理本身当成 SSRF 目标拒掉，还会掩盖真实错误
+        patched = patch_curl_follow_safe()
+        if patched:
+            logger.debug(f"[gemini-image] 已修正 CurlFollow.SAFE 行为：{patched}")
 
     @staticmethod
     def _configure_library_logging(verbose: bool = False) -> None:
@@ -244,9 +315,21 @@ class GeminiImageClient:
                         )
                         raise error from exc
 
-                    # Cookie 失效 / 连接被掐断：重建一次再试
-                    if attempt == 1 and isinstance(exc, gwa.AuthError):
-                        logger.warning(f"[gemini-image] 第 {attempt} 次生成失败，重建连接后重试：{exc}")
+                    # 凭据失效 / 连接被拒 / 瞬时网络抖动：丢弃连接后重试一次。
+                    # 网络类错误也纳入重试，是因为节点抖动常常只持续几秒，
+                    # 重建连接（可能换到别的节点）后大概率就恢复了。
+                    if attempt == 1 and isinstance(
+                        exc,
+                        (
+                            gwa.AuthError,
+                            curl_exc.ConnectionError,
+                            curl_exc.Timeout,
+                            curl_exc.CurlError,
+                        ),
+                    ):
+                        logger.warning(
+                            f"[gemini-image] 第 {attempt} 次生成失败（{type(exc).__name__}），重建连接后重试"
+                        )
                         await self.discard()
                         last_error = error
                         await asyncio.sleep(1)
