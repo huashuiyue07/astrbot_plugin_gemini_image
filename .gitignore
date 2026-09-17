@@ -1,0 +1,18 @@
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 测试与工具缓存
+.pytest_cache/
+.pytest_tmp/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# 插件运行期数据（图片、Cookie 缓存、限流数据）
+data/
+
+# 打包产物
+*.zip
+.venv/
+venv/

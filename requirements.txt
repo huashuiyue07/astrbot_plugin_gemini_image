@@ -1,0 +1,8 @@
+# 网页版 Gemini 逆向客户端：提供 Cookie 认证 + Nano Banana 生图
+# 要求 Python >= 3.11（AstrBot 4.16+ 满足）
+gemini-webapi>=2.1.1
+
+# gemini-webapi 2.1.1 用到了 curl_cffi 的 CurlFollow / CurlHttpVersion（0.16 新增），
+# 版本不匹配连 import 都会失败。这里显式声明，好让 AstrBot 的依赖预检查
+# 能察觉「被其它插件降级」的情况并自动装回来。
+curl-cffi>=0.16.2,<0.17

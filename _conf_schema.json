@@ -1,0 +1,182 @@
+{
+  "secure_1psid": {
+    "type": "string",
+    "description": "Gemini Cookie: __Secure-1PSID",
+    "hint": "必填。浏览器打开 https://gemini.google.com 登录 → F12 → 网络 → 刷新页面 → 任选一个请求，复制 Cookie 里的 __Secure-1PSID 值",
+    "default": ""
+  },
+  "secure_1psidts": {
+    "type": "string",
+    "description": "Gemini Cookie: __Secure-1PSIDTS",
+    "hint": "强烈建议填写，与 __Secure-1PSID 成对获取。留空时靠自动刷新维持，失效需重填",
+    "default": ""
+  },
+  "auto_refresh_cookies": {
+    "type": "bool",
+    "description": "后台自动刷新 Cookie",
+    "hint": "开启后插件会定期刷新 __Secure-1PSIDTS 并存到数据目录，长时间运行不易掉线。注意：可能导致你在浏览器里需要重新登录（正常现象）",
+    "default": true
+  },
+  "use_proxy": {
+    "type": "bool",
+    "description": "是否使用代理",
+    "hint": "国内服务器访问 gemini.google.com 必须走代理，否则连接会超时",
+    "default": true
+  },
+  "proxy_url": {
+    "type": "string",
+    "description": "代理地址",
+    "hint": "支持 http / socks5，例如 http://127.0.0.1:7890 或 socks5://127.0.0.1:7891（容器内请填宿主机 IP，如 http://172.17.0.1:7890）",
+    "default": "http://127.0.0.1:7890"
+  },
+  "model": {
+    "type": "string",
+    "description": "使用的模型",
+    "hint": "留空=账号默认。可填 gemini-flash / gemini-pro；生图能力由提示词触发，与模型选择无关",
+    "default": ""
+  },
+  "temporary_chat": {
+    "type": "bool",
+    "description": "使用临时会话生图",
+    "hint": "开启后生图不写入 Gemini 账号的历史记录，避免污染你的对话列表",
+    "default": true
+  },
+  "prompt_prefix": {
+    "type": "string",
+    "description": "文生图提示词前缀",
+    "hint": "Gemini 网页版只有明确要求「生成图片」时才走图像模型，否则会去联网搜图。若经常返回网络图片，可改得更强硬，例如：Generate an image, do not search the web: ",
+    "default": "Generate an image: "
+  },
+  "edit_prompt_prefix": {
+    "type": "string",
+    "description": "图生图提示词前缀",
+    "hint": "用户带图时的前缀，保持 edit 语义可避免丢失原图特征",
+    "default": "Edit the provided image and generate a new image: "
+  },
+  "max_images": {
+    "type": "int",
+    "description": "单次最多发送几张图",
+    "hint": "Gemini 一次可能返回多张图，超出部分不发送，避免刷屏",
+    "default": 4
+  },
+  "max_input_images": {
+    "type": "int",
+    "description": "单次最多读取几张输入图",
+    "hint": "图生图时从用户消息里取几张图，填 0 表示关闭图生图功能",
+    "default": 1
+  },
+  "include_text": {
+    "type": "bool",
+    "description": "是否附带 Gemini 的文字说明",
+    "hint": "关闭后只发图片，回复更干净",
+    "default": true
+  },
+  "max_text_length": {
+    "type": "int",
+    "description": "文字说明截断长度",
+    "hint": "超过该长度的文字说明会被截断，0 表示不截断",
+    "default": 200
+  },
+  "at_sender": {
+    "type": "bool",
+    "description": "群聊回复时 @ 发送者",
+    "hint": "开启后群里能明确知道图是回给谁的",
+    "default": true
+  },
+  "send_progress": {
+    "type": "bool",
+    "description": "先发「正在生成」提示",
+    "hint": "生图通常要 20~60 秒，先给个反馈能显著降低用户以为没反应的疑虑",
+    "default": true
+  },
+  "init_timeout": {
+    "type": "int",
+    "description": "建立连接超时(秒)",
+    "hint": "网络较慢时适当调大",
+    "default": 60
+  },
+  "request_timeout": {
+    "type": "int",
+    "description": "单次生图超时(秒)",
+    "hint": "从发出提示词到收到图片的总时长上限，免费账号繁忙时可调到 300 以上",
+    "default": 300
+  },
+  "watchdog_timeout": {
+    "type": "int",
+    "description": "流式看门狗超时(秒)",
+    "hint": "连接存活但长时间没有数据时判定为僵尸连接。生图较慢时建议不低于 180",
+    "default": 180
+  },
+  "min_request_interval": {
+    "type": "int",
+    "description": "全局最小请求间隔(秒)",
+    "hint": "两次生图之间的强制间隔。防止「一个人刚发完、另一个人立刻发」形成连续高频请求——这是触发 Google 风控最常见的原因。建议 5~10 秒，0 表示不限制",
+    "default": 5
+  },
+  "blocked_cooldown_seconds": {
+    "type": "int",
+    "description": "触发风控后的静默时长(秒)",
+    "hint": "一旦吃到 Google 的 429 限流，插件会进入该时长的静默期，期间直接拒绝新请求（不再去撞击），避免把账号推向更严厉的限制",
+    "default": 300
+  },
+  "allow_group": {
+    "type": "bool",
+    "description": "允许在群聊使用",
+    "hint": "关闭后仅私聊可用",
+    "default": true
+  },
+  "group_whitelist": {
+    "type": "string",
+    "description": "群白名单",
+    "hint": "填群号，多个用逗号或换行分隔。留空表示不限制（白名单非空时，只有名单内的群能用）",
+    "default": ""
+  },
+  "group_blacklist": {
+    "type": "string",
+    "description": "群黑名单",
+    "hint": "填群号，多个用逗号或换行分隔。黑名单优先级高于白名单",
+    "default": ""
+  },
+  "admin_only": {
+    "type": "bool",
+    "description": "仅管理员可用",
+    "hint": "开启后普通群成员无法调用生图，适合个人号或小范围使用",
+    "default": false
+  },
+  "cooldown_seconds": {
+    "type": "int",
+    "description": "冷却时间(秒)",
+    "hint": "同一用户两次生图的最小间隔，0 表示不限制",
+    "default": 30
+  },
+  "daily_quota": {
+    "type": "int",
+    "description": "每人每日配额",
+    "hint": "0 表示不限制。生图会消耗 Google 账号额度，群里建议限制在 10~30 次",
+    "default": 20
+  },
+  "global_daily_quota": {
+    "type": "int",
+    "description": "全站每日总配额",
+    "hint": "所有人加起来每天最多生图多少次，是账号安全的最后一道闸——单人配额挡不住「人多时被轮流刷」。建议 100~300，0 表示不限制",
+    "default": 200
+  },
+  "enable_short_command": {
+    "type": "bool",
+    "description": "启用短指令「生图」",
+    "hint": "默认关闭，避免与其它生图插件抢同一个指令。确认无冲突后可开启",
+    "default": false
+  },
+  "image_retain_days": {
+    "type": "int",
+    "description": "本地图片保留天数",
+    "hint": "超期图片会被自动清理，0 表示不清理",
+    "default": 3
+  },
+  "verbose_log": {
+    "type": "bool",
+    "description": "输出调试日志",
+    "hint": "排查问题时开启，会打印 gemini-webapi 的详细请求日志",
+    "default": false
+  }
+}
